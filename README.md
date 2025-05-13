@@ -1,116 +1,117 @@
-# vaultic-crypto-engine
+# Vaultic Crypto Engine
 
-`vaultic-crypto-engine` is the core Rust crate powering Vaultic’s end-to-end encryption service. It provides:
+A high-performance cryptographic library for secure RSA operations with support for both native Rust and WebAssembly environments.
 
-- **RSA-2048 keypair generation** in PEM format  
-- **RSA-OAEP encryption & decryption**, Base64 input/output  
-- **WebAssembly bindings** for browser and Node.js SDKs  
-- A lightweight, audited, and memory-safe implementation  
+## 🛡️ Security Warning
 
-## 🚀 Quickstart
+This library uses a pure Rust RSA implementation with additional mitigations against the Marvin Attack (RUSTSEC-2023-0071), a timing side-channel vulnerability. The mitigations implemented include:
 
-### 1. Install via npm, pnpm or yarn (WASM build)
+1. Random delays added to operations involving private keys
+2. More aggressive blinding factors
+3. Usage recommendations for non-network environments
 
-```bash
-# npm
-npm install @vaultic/crypto-engine-wasm
+For critical applications, consider using a library with constant-time guarantees such as `aws-lc-rs`.
 
-# or pnpm
-pnpm add @vaultic/crypto-engine-wasm
+## Features
 
-# or yarn
-yarn add @vaultic/crypto-engine-wasm
+- 🔑 RSA key generation (2048-bit)
+- 🔒 RSA-PKCS#1 encryption
+- 🔓 RSA decryption with timing attack protections
+- 📦 Base64 encoding/decoding for easy transport
+- 🌐 WebAssembly support for browser environments
+
+## Installation
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+vaultic-crypto-engine = "0.1.0"
 ```
 
----
+For WebAssembly support, enable the `wasm` feature:
 
-### 2. In your JS/TS code
+```toml
+[dependencies]
+vaultic-crypto-engine = { version = "0.1.0", features = ["wasm"] }
+```
 
-```ts
-import init, {
-  generate_rsa_keypair_pem,
-  rsa_encrypt_base64,
-  rsa_decrypt_base64
-} from "@vaultic/crypto-engine-wasm";
+## Usage
 
-async function demo() {
-  await init(); // Initialize the WASM runtime
+### Key Generation
 
-  // 1. Generate a new keypair
-  const [pubPem, privPem] = JSON.parse(generate_rsa_keypair_pem() as string);
-  console.log("Public Key PEM:", pubPem);
-  console.log("Private Key PEM:", privPem);
+```rust
+use vaultic_crypto_engine::generate_rsa_keypair_pem;
 
-  // 2. Encrypt a message
-  const ciphertext = rsa_encrypt_base64(pubPem, "Hello, Vaultic!");
-  console.log("Ciphertext (Base64):", ciphertext);
+fn main() {
+    let keypair = generate_rsa_keypair_pem();
+    
+    println!("Public Key:\n{}", keypair.public_pem);
+    println!("Private Key:\n{}", keypair.private_pem);
+}
+```
 
-  // 3. Decrypt it back
-  const plaintext = rsa_decrypt_base64(privPem, ciphertext);
-  console.log("Decrypted message:", plaintext);
+### Encryption and Decryption
+
+```rust
+use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64, rsa_decrypt_base64};
+
+fn main() {
+    // Generate a key pair
+    let keypair = generate_rsa_keypair_pem();
+    
+    // Message to encrypt
+    let message = "This is a secret message";
+    
+    // Encrypt with the public key
+    let encrypted = rsa_encrypt_base64(&keypair.public_pem, message);
+    println!("Encrypted: {}", encrypted);
+    
+    // Decrypt with the private key
+    let decrypted = rsa_decrypt_base64(&keypair.private_pem, &encrypted);
+    println!("Decrypted: {}", decrypted);
+    
+    assert_eq!(message, decrypted);
+}
+```
+
+### WebAssembly Usage
+
+When compiled to WebAssembly, the library can be used from JavaScript:
+
+```javascript
+import init, { generate_rsa_keypair_pem, rsa_encrypt_base64, rsa_decrypt_base64 } from 'vaultic-crypto-engine';
+
+async function run() {
+  await init();
+  
+  // Generate a key pair
+  const keypair = generate_rsa_keypair_pem();
+  
+  // Encrypt a message
+  const message = "Secret message from JavaScript";
+  const encrypted = rsa_encrypt_base64(keypair.public_pem, message);
+  
+  // Decrypt the message
+  const decrypted = rsa_decrypt_base64(keypair.private_pem, encrypted);
+  console.log(decrypted); // "Secret message from JavaScript"
 }
 
-demo();
+run();
 ```
 
----
+## Building for WebAssembly
 
-## 📦 Repository Layout
+To build the WebAssembly module:
 
-```
-vaultic-crypto-engine/
-├─ src/
-│   └─ lib.rs           # Core RSA-OAEP functions + wasm-bindgen exports
-├─ Cargo.toml           # Crate metadata and dependencies
-├─ README.md
-└─ LICENSE
+```bash
+wasm-pack build --release --target bundler -- --features wasm
 ```
 
----
+## License
 
-## 🛠️ Building & Testing
+MIT License
 
-1. **Build native Rust library**
+## Contributing
 
-   ```bash
-   cargo build --release
-   ```
-
-2. **Run Rust unit tests**
-
-   ```bash
-   cargo test
-   ```
-
-3. **Build WASM package**
-
-   ```bash
-   wasm-pack build --target bundler --out-dir ../packages/crypto-engine-wasm
-   ```
-
----
-
-## 🔒 Security & Auditing
-
-* Uses `rsa` crate for RSA-OAEP with SHA-256 padding
-* Randomness from `OsRng` (Operating-system CSPRNG)
-* No secret keys are logged or stored by default
-
----
-
-## ❤️ Contributing
-
-1. Fork the repo
-2. Create a branch (`git checkout -b feat/your-feature`)
-3. Implement and test
-4. Submit a Pull Request
-
----
-
-## 📄 License
-
-[MIT License](LICENSE)
-
----
-
-*Built for Vaultic’s E2EE service — keeping your data private by design.*
+Contributions to improve security and add features are welcome. Please see the CONTRIBUTING.md file for more information.
