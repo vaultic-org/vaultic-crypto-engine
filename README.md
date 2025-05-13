@@ -62,8 +62,8 @@ vaultic-crypto-engine/
 ├─ src/
 │   └─ lib.rs           # Core RSA-OAEP functions + wasm-bindgen exports
 ├─ Cargo.toml           # Crate metadata and dependencies
-├─ README.md            # This file
-└─ LICENSE              # MIT or your chosen license
+├─ README.md
+└─ LICENSE
 ```
 
 ---
