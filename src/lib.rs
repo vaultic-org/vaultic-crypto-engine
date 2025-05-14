@@ -1,8 +1,8 @@
 //! # Vaultic Crypto Engine
-//! 
+//!
 //! A high-performance cryptographic library for secure RSA operations,
 //! with support for both native Rust and WebAssembly environments.
-//! 
+//!
 //! This library provides RSA key generation, encryption, and decryption
 //! capabilities using industry-standard formats and algorithms.
 //!
@@ -19,12 +19,12 @@
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use base64::{Engine as _, engine::general_purpose};
+use rand::{RngCore, SeedableRng, rngs::OsRng, rngs::StdRng};
 use rsa::{
-    RsaPrivateKey, RsaPublicKey, 
-    pkcs8::{EncodePrivateKey, EncodePublicKey, DecodePrivateKey, DecodePublicKey},
+    RsaPrivateKey, RsaPublicKey,
+    pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey},
 };
-use rand::{rngs::OsRng, rngs::StdRng, SeedableRng, RngCore};
-use base64::{engine::general_purpose, Engine as _};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Serde is used for the WASM interface
@@ -40,7 +40,7 @@ use serde_wasm_bindgen;
 pub struct KeyPair {
     /// The public key in PEM format
     pub public_pem: String,
-    
+
     /// The private key in PEM format
     pub private_pem: String,
 }
@@ -91,20 +91,22 @@ pub fn generate_rsa_keypair_pem() -> KeyPair {
 fn generate_keypair_impl() -> KeyPair {
     // Create a secure random number generator
     let mut rng = OsRng;
-    
+
     // Generate the RSA key pair with 2048 bits
     let private_key = RsaPrivateKey::new(&mut rng, 2048).expect("Failed to generate RSA key pair");
     let public_key = RsaPublicKey::from(&private_key);
-    
+
     // Convert to PEM format
-    let private_pem = private_key.to_pkcs8_pem(Default::default())
+    let private_pem = private_key
+        .to_pkcs8_pem(Default::default())
         .expect("Failed to encode private key as PEM")
         .to_string();
-    
-    let public_pem = public_key.to_public_key_pem(Default::default())
+
+    let public_pem = public_key
+        .to_public_key_pem(Default::default())
         .expect("Failed to encode public key as PEM")
         .to_string();
-    
+
     KeyPair {
         public_pem,
         private_pem,
@@ -159,14 +161,15 @@ fn rsa_encrypt_base64_impl(public_key_pem: &str, plaintext: &str) -> String {
     // Parse the public key from PEM format
     let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)
         .expect("Failed to parse public key from PEM");
-    
+
     // Create RNG
     let mut rng = OsRng;
-    
+
     // Encrypt the plaintext
-    let encrypted_data = public_key.encrypt(&mut rng, rsa::Pkcs1v15Encrypt, plaintext.as_bytes())
+    let encrypted_data = public_key
+        .encrypt(&mut rng, rsa::Pkcs1v15Encrypt, plaintext.as_bytes())
         .expect("Encryption failed");
-    
+
     // Encode the encrypted data in Base64
     general_purpose::STANDARD.encode(encrypted_data)
 }
@@ -237,26 +240,29 @@ fn rsa_decrypt_base64_impl(private_key_pem: &str, ciphertext_b64: &str) -> Strin
     // Parse the private key from PEM format
     let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_pem)
         .expect("Failed to parse private key from PEM");
-    
+
     // Decode the Base64 ciphertext
-    let encrypted_data = general_purpose::STANDARD.decode(ciphertext_b64)
+    let encrypted_data = general_purpose::STANDARD
+        .decode(ciphertext_b64)
         .expect("Invalid base64");
-    
+
     // Generate a seed based on system time and some entropy
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
     let mut seed = [0u8; 32];
     OsRng.fill_bytes(&mut seed);
-    
+
     // Use the seed to create a deterministic RNG for blinding
     let seed_value = u64::from_ne_bytes([
-        seed[0], seed[1], seed[2], seed[3], 
-        seed[4], seed[5], seed[6], seed[7]
+        seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
     ]);
-    
+
     // Mix in the current time
     let seed_with_time = seed_value ^ (now as u64);
     let mut rng = StdRng::seed_from_u64(seed_with_time);
-    
+
     // Add a small random delay to mitigate timing attacks
     // This adds timing noise to make it harder to extract information
     let delay = rng.next_u32() % 10;
@@ -264,17 +270,17 @@ fn rsa_decrypt_base64_impl(private_key_pem: &str, ciphertext_b64: &str) -> Strin
         // Simple loop to consume some time
         std::hint::black_box(());
     }
-    
-    // Set custom blinding parameters - make the blinding more aggressive 
+
+    // Set custom blinding parameters - make the blinding more aggressive
     // than the default in the RSA library
     // (Note: This is internal to the RSA library and not actually working in this example,
     //  but represents the kind of mitigations that would be implemented)
-    
+
     // Decrypt the ciphertext
-    let decrypted_data = private_key.decrypt(rsa::Pkcs1v15Encrypt, &encrypted_data)
+    let decrypted_data = private_key
+        .decrypt(rsa::Pkcs1v15Encrypt, &encrypted_data)
         .expect("Decryption failed");
-    
+
     // Convert the decrypted bytes to a UTF-8 string
-    String::from_utf8(decrypted_data)
-        .expect("Invalid UTF-8")
+    String::from_utf8(decrypted_data).expect("Invalid UTF-8")
 }
