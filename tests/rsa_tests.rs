@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod rsa_tests {
-    use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64, rsa_decrypt_base64};
+    use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_decrypt_base64, rsa_encrypt_base64};
 
     #[test]
     fn test_key_generation() {
@@ -8,14 +8,26 @@ mod rsa_tests {
         {
             let keypair = generate_rsa_keypair_pem();
 
-            assert!(keypair.public_pem.contains("-----BEGIN PUBLIC KEY-----"),
-                   "Public key PEM format is incorrect: {}", keypair.public_pem);
-            assert!(keypair.public_pem.contains("-----END PUBLIC KEY-----"),
-                   "Public key PEM format is incorrect: {}", keypair.public_pem);
-            assert!(keypair.private_pem.contains("-----BEGIN PRIVATE KEY-----"),
-                   "Private key PEM format is incorrect: {}", keypair.private_pem);
-            assert!(keypair.private_pem.contains("-----END PRIVATE KEY-----"),
-                   "Private key PEM format is incorrect: {}", keypair.private_pem);
+            assert!(
+                keypair.public_pem.contains("-----BEGIN PUBLIC KEY-----"),
+                "Public key PEM format is incorrect: {}",
+                keypair.public_pem
+            );
+            assert!(
+                keypair.public_pem.contains("-----END PUBLIC KEY-----"),
+                "Public key PEM format is incorrect: {}",
+                keypair.public_pem
+            );
+            assert!(
+                keypair.private_pem.contains("-----BEGIN PRIVATE KEY-----"),
+                "Private key PEM format is incorrect: {}",
+                keypair.private_pem
+            );
+            assert!(
+                keypair.private_pem.contains("-----END PRIVATE KEY-----"),
+                "Private key PEM format is incorrect: {}",
+                keypair.private_pem
+            );
         }
     }
 
@@ -103,9 +115,8 @@ mod rsa_tests {
             let encrypted = rsa_encrypt_base64(&keypair1.public_pem, message);
 
             // Attempt to decrypt with second key pair should fail
-            let result = std::panic::catch_unwind(|| {
-                rsa_decrypt_base64(&keypair2.private_pem, &encrypted)
-            });
+            let result =
+                std::panic::catch_unwind(|| rsa_decrypt_base64(&keypair2.private_pem, &encrypted));
 
             // Verify decryption fails with the wrong key
             assert!(result.is_err());
