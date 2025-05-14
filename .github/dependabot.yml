@@ -1,4 +1,3 @@
-
 version: 2
 updates:
   - package-ecosystem: "cargo"
@@ -11,4 +10,3 @@ updates:
     labels:
       - "security"
       - "dependencies"
-    version-requirement-updates: "increase-if-necessary"
