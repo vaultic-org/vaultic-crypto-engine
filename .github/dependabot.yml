@@ -1,0 +1,14 @@
+
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+    labels:
+      - "security"
+      - "dependencies"
+    version-requirement-updates: "increase-if-necessary"
