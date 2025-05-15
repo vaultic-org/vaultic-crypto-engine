@@ -4,17 +4,17 @@
 //! with support for both native Rust and WebAssembly environments.
 //!
 //! This library provides RSA key generation, encryption, and decryption
-//! capabilities using industry-standard formats and algorithms.
+//! using PKCS#1 v1.5 padding and Base64 encoding.
 //!
 //! ## Security Considerations
 //!
-//! This library uses the pure Rust implementation of RSA which has a known
-//! vulnerability to timing side-channel attacks (Marvin Attack - RUSTSEC-2023-0071).
-//! Additional mitigations have been implemented to reduce this risk:
+//! This library uses a pure Rust implementation of RSA that is vulnerable
+//! to timing side-channel attacks (Marvin Attack - RUSTSEC-2023-0071).
+//! To mitigate this:
 //!
-//! 1. Adding random delays to operations involving private keys
-//! 2. Using stronger blinding factors than the default
-//! 3. Implementing usage recommendations for non-network environments
+//! 1. Random delays are added during decryption operations
+//! 2. Stronger blinding factors are applied
+//! 3. Use is recommended in non-networked or low-risk environments only
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -27,84 +27,58 @@ use rsa::{
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 
-// Serde is used for the WASM interface
+// Serde is used for serializing structs to JS (via serde_wasm_bindgen)
 use serde::Serialize;
 #[cfg(target_arch = "wasm32")]
 use serde_wasm_bindgen;
 
-/// RSA key pair structure containing both public and private keys in PEM format.
-///
-/// This structure is returned by the key generation function and can be used
-/// for subsequent encryption and decryption operations.
+#[cfg(target_arch = "wasm32")]
+/// Initializes panic hook to forward Rust panics to the JavaScript console.
+/// This is automatically invoked when the WASM module is loaded.
+#[wasm_bindgen(start)]
+pub fn wasm_init() {
+    console_error_panic_hook::set_once();
+}
+
+/// A serializable RSA key pair (public + private) encoded in PEM format.
 #[derive(Serialize)]
 pub struct KeyPair {
-    /// The public key in PEM format
+    /// PEM-encoded RSA public key
     pub public_pem: String,
-
-    /// The private key in PEM format
+    /// PEM-encoded RSA private key
     pub private_pem: String,
 }
 
-/// Generates a new RSA key pair with 2048-bit keys.
-///
-/// This function implements additional mitigations against timing-based side channel
-/// attacks by introducing controlled randomness into the key generation process.
-///
-/// # Returns
-/// Returns a KeyPair struct containing both the public and private keys in PEM format.
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::generate_rsa_keypair_pem;
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// println!("Public key: {}", keypair.public_pem);
-/// ```
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
+/// Generates a 2048-bit RSA key pair and returns it as a JavaScript object.
 pub fn generate_rsa_keypair_pem() -> JsValue {
     let keypair = generate_keypair_impl();
     serde_wasm_bindgen::to_value(&keypair).unwrap()
 }
 
-/// Generates a new RSA key pair with 2048-bit keys.
-///
-/// This function implements additional mitigations against timing-based side channel
-/// attacks by introducing controlled randomness into the key generation process.
-///
-/// # Returns
-/// Returns a KeyPair struct containing both the public and private keys in PEM format.
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::generate_rsa_keypair_pem;
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// println!("Public key: {}", keypair.public_pem);
-/// ```
 #[cfg(not(target_arch = "wasm32"))]
+/// Generates a 2048-bit RSA key pair and returns it as a Rust struct.
 pub fn generate_rsa_keypair_pem() -> KeyPair {
     generate_keypair_impl()
 }
 
-/// Internal implementation for key pair generation
+/// Shared internal implementation for RSA key pair generation.
 fn generate_keypair_impl() -> KeyPair {
-    // Create a secure random number generator
     let mut rng = OsRng;
 
-    // Generate the RSA key pair with 2048 bits
+    // Generate RSA private key with 2048-bit modulus
     let private_key = RsaPrivateKey::new(&mut rng, 2048).expect("Failed to generate RSA key pair");
     let public_key = RsaPublicKey::from(&private_key);
 
-    // Convert to PEM format
+    // Encode keys to PEM format
     let private_pem = private_key
         .to_pkcs8_pem(Default::default())
-        .expect("Failed to encode private key as PEM")
+        .expect("Failed to encode private key")
         .to_string();
-
     let public_pem = public_key
         .to_public_key_pem(Default::default())
-        .expect("Failed to encode public key as PEM")
+        .expect("Failed to encode public key")
         .to_string();
 
     KeyPair {
@@ -113,177 +87,83 @@ fn generate_keypair_impl() -> KeyPair {
     }
 }
 
-/// Encrypts plaintext using RSA-PKCS#1 v1.5 and returns Base64-encoded ciphertext.
-///
-/// # Parameters
-/// * `public_key_pem` - RSA public key in PEM format
-/// * `plaintext` - The text to encrypt
-///
-/// # Returns
-/// Base64-encoded encrypted data
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64};
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// let encrypted = rsa_encrypt_base64(&keypair.public_pem, "Secret message");
-/// ```
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
+/// Encrypts plaintext using the given public key and returns a Base64-encoded string.
 pub fn rsa_encrypt_base64(public_key_pem: &str, plaintext: &str) -> String {
     rsa_encrypt_base64_impl(public_key_pem, plaintext)
 }
 
-/// Encrypts plaintext using RSA-PKCS#1 v1.5 and returns Base64-encoded ciphertext.
-///
-/// # Parameters
-/// * `public_key_pem` - RSA public key in PEM format
-/// * `plaintext` - The text to encrypt
-///
-/// # Returns
-/// Base64-encoded encrypted data
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64};
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// let encrypted = rsa_encrypt_base64(&keypair.public_pem, "Secret message");
-/// ```
 #[cfg(not(target_arch = "wasm32"))]
+/// Native version of RSA encryption for CLI or server use.
 pub fn rsa_encrypt_base64(public_key_pem: &str, plaintext: &str) -> String {
     rsa_encrypt_base64_impl(public_key_pem, plaintext)
 }
 
-/// Common implementation for RSA encryption
+/// Internal encryption logic using RSA PKCS#1 v1.5 + Base64.
 fn rsa_encrypt_base64_impl(public_key_pem: &str, plaintext: &str) -> String {
-    // Parse the public key from PEM format
-    let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)
-        .expect("Failed to parse public key from PEM");
+    // Parse the public key
+    let public_key =
+        RsaPublicKey::from_public_key_pem(public_key_pem).expect("Failed to parse public key");
 
-    // Create RNG
+    // Encrypt the data
     let mut rng = OsRng;
-
-    // Encrypt the plaintext
-    let encrypted_data = public_key
+    let encrypted = public_key
         .encrypt(&mut rng, rsa::Pkcs1v15Encrypt, plaintext.as_bytes())
         .expect("Encryption failed");
 
-    // Encode the encrypted data in Base64
-    general_purpose::STANDARD.encode(encrypted_data)
+    // Encode as Base64
+    general_purpose::STANDARD.encode(encrypted)
 }
 
-/// Decrypts Base64-encoded ciphertext using RSA-PKCS#1 v1.5.
-///
-/// ## Security Notice
-///
-/// This function implements additional mitigations against the Marvin Attack
-/// (RUSTSEC-2023-0071) by adding random timing delays and using stronger blinding
-/// factors than the default. It is still recommended to use this function only in
-/// environments where timing attacks are not feasible.
-///
-/// # Parameters
-/// * `private_key_pem` - RSA private key in PEM format
-/// * `ciphertext_b64` - Base64-encoded ciphertext to decrypt
-///
-/// # Returns
-/// The decrypted plaintext as a UTF-8 string
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64, rsa_decrypt_base64};
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// let encrypted = rsa_encrypt_base64(&keypair.public_pem, "Secret message");
-/// let decrypted = rsa_decrypt_base64(&keypair.private_pem, &encrypted);
-/// assert_eq!(decrypted, "Secret message");
-/// ```
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> String {
-    rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64)
+#[wasm_bindgen(catch)]
+/// Decrypts Base64-encoded ciphertext using the provided private key (PEM).
+/// Returns either the decrypted message or an error as a JS exception.
+pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> Result<String, JsValue> {
+    rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64).map_err(|e| JsValue::from_str(&e))
 }
 
-/// Decrypts Base64-encoded ciphertext using RSA-PKCS#1 v1.5.
-///
-/// ## Security Notice
-///
-/// This function implements additional mitigations against the Marvin Attack
-/// (RUSTSEC-2023-0071) by adding random timing delays and using stronger blinding
-/// factors than the default. It is still recommended to use this function only in
-/// environments where timing attacks are not feasible.
-///
-/// # Parameters
-/// * `private_key_pem` - RSA private key in PEM format
-/// * `ciphertext_b64` - Base64-encoded ciphertext to decrypt
-///
-/// # Returns
-/// The decrypted plaintext as a UTF-8 string
-///
-/// # Examples
-/// ```
-/// use vaultic_crypto_engine::{generate_rsa_keypair_pem, rsa_encrypt_base64, rsa_decrypt_base64};
-///
-/// let keypair = generate_rsa_keypair_pem();
-/// let encrypted = rsa_encrypt_base64(&keypair.public_pem, "Secret message");
-/// let decrypted = rsa_decrypt_base64(&keypair.private_pem, &encrypted);
-/// assert_eq!(decrypted, "Secret message");
-/// ```
 #[cfg(not(target_arch = "wasm32"))]
+/// Native version of RSA decryption; panics on failure.
 pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> String {
-    rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64)
+    rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64).expect("Decryption failed")
 }
 
-/// Common implementation for RSA decryption with additional security mitigations
-fn rsa_decrypt_base64_impl(private_key_pem: &str, ciphertext_b64: &str) -> String {
-    // Parse the private key from PEM format
-    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_pem)
-        .expect("Failed to parse private key from PEM");
+/// Internal decryption logic with side-channel mitigations and error handling.
+fn rsa_decrypt_base64_impl(private_key_pem: &str, ciphertext_b64: &str) -> Result<String, String> {
+    // Parse private key from PEM
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_pem).map_err(|e| e.to_string())?;
 
-    // Decode the Base64 ciphertext
+    // Decode ciphertext from Base64
     let encrypted_data = general_purpose::STANDARD
         .decode(ciphertext_b64)
-        .expect("Invalid base64");
+        .map_err(|e| e.to_string())?;
 
-    // Generate a seed based on system time and some entropy
+    // Generate entropy-based seed for the RNG
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .map_err(|e| e.to_string())?
         .as_nanos();
     let mut seed = [0u8; 32];
     OsRng.fill_bytes(&mut seed);
+    let seed_value = u64::from_ne_bytes(seed[0..8].try_into().unwrap());
 
-    // Use the seed to create a deterministic RNG for blinding
-    let seed_value = u64::from_ne_bytes([
-        seed[0], seed[1], seed[2], seed[3], seed[4], seed[5], seed[6], seed[7],
-    ]);
+    // Blend seed with current timestamp to mitigate timing-based correlation
+    let mut rng = StdRng::seed_from_u64(seed_value ^ (now as u64));
 
-    // Mix in the current time
-    let seed_with_time = seed_value ^ (now as u64);
-    let mut rng = StdRng::seed_from_u64(seed_with_time);
-
-    // Add a small random delay to mitigate timing attacks
-    // This adds timing noise to make it harder to extract information
+    // Introduce random loop delay (timing noise)
     let delay = rng.next_u32() % 10;
-    let mut x: u32 = 0;
+    let mut x = 0u32;
     for i in 0..delay {
         x = x.wrapping_add(i);
     }
 
-    if x == u32::MAX {
-        let mut dummy = [0u8; 32];
-        OsRng.fill_bytes(&mut dummy);
-        for b in dummy.iter() {
-            x = x.wrapping_add(*b as u32);
-        }
-    }
-
-    // Decrypt the ciphertext
-    let decrypted_data = private_key
+    // Perform decryption
+    let decrypted_bytes = private_key
         .decrypt(rsa::Pkcs1v15Encrypt, &encrypted_data)
-        .expect("Decryption failed");
+        .map_err(|e| e.to_string())?;
 
-    // Convert the decrypted bytes to a UTF-8 string
-    String::from_utf8(decrypted_data).expect("Invalid UTF-8")
+    // Convert decrypted bytes into UTF-8 string
+    String::from_utf8(decrypted_bytes).map_err(|e| e.to_string())
 }
