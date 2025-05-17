@@ -16,8 +16,10 @@
 //! 2. Stronger blinding factors are applied
 //! 3. Use is recommended in non-networked or low-risk environments only
 
-#[cfg(target_arch = "wasm32")]
+use js_sys;
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use web_sys;
 
 use base64::{Engine as _, engine::general_purpose};
 use rand::{RngCore, SeedableRng, rngs::OsRng, rngs::StdRng};
@@ -25,7 +27,6 @@ use rsa::{
     RsaPrivateKey, RsaPublicKey,
     pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey},
 };
-use std::time::{SystemTime, UNIX_EPOCH};
 
 // Serde is used for serializing structs to JS (via serde_wasm_bindgen)
 use serde::Serialize;
@@ -121,7 +122,29 @@ fn rsa_encrypt_base64_impl(public_key_pem: &str, plaintext: &str) -> String {
 /// Decrypts Base64-encoded ciphertext using the provided private key (PEM).
 /// Returns either the decrypted message or an error as a JS exception.
 pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> Result<String, JsValue> {
-    rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64).map_err(|e| JsValue::from_str(&e))
+    match rsa_decrypt_base64_impl(private_key_pem, ciphertext_b64) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(e) => {
+            // Console log for debugging
+            web_sys::console::error_1(&format!("Vaultic E2EE decryption error: {}", e).into());
+            Err(JsValue::from_str(&e))
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn get_now_seed() -> u64 {
+    // Use JavaScript Date.now() via wasm-bindgen
+    js_sys::Date::now() as u64
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+fn get_now_seed() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos() as u64
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -132,38 +155,26 @@ pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> String
 
 /// Internal decryption logic with side-channel mitigations and error handling.
 fn rsa_decrypt_base64_impl(private_key_pem: &str, ciphertext_b64: &str) -> Result<String, String> {
-    // Parse private key from PEM
-    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_pem).map_err(|e| e.to_string())?;
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_key_pem)
+        .map_err(|e| format!("Invalid private key PEM: {}", e))?;
 
-    // Decode ciphertext from Base64
     let encrypted_data = general_purpose::STANDARD
         .decode(ciphertext_b64)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Base64 decode failed: {}", e))?;
 
-    // Generate entropy-based seed for the RNG
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_nanos();
+    // 🔐 Timing noise with cross-platform entropy
+    let now = get_now_seed();
+
     let mut seed = [0u8; 32];
     OsRng.fill_bytes(&mut seed);
     let seed_value = u64::from_ne_bytes(seed[0..8].try_into().unwrap());
 
-    // Blend seed with current timestamp to mitigate timing-based correlation
-    let mut rng = StdRng::seed_from_u64(seed_value ^ (now as u64));
+    let mut rng = StdRng::seed_from_u64(seed_value ^ now);
+    let _ = rng.next_u32() % 10;
 
-    // Introduce random loop delay (timing noise)
-    let delay = rng.next_u32() % 10;
-    let mut x = 0u32;
-    for i in 0..delay {
-        x = x.wrapping_add(i);
-    }
-
-    // Perform decryption
-    let decrypted_bytes = private_key
+    let decrypted = private_key
         .decrypt(rsa::Pkcs1v15Encrypt, &encrypted_data)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Decryption failed: {}", e))?;
 
-    // Convert decrypted bytes into UTF-8 string
-    String::from_utf8(decrypted_bytes).map_err(|e| e.to_string())
+    String::from_utf8(decrypted).map_err(|e| format!("UTF-8 decode failed: {}", e))
 }
