@@ -11,16 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           target: wasm32-unknown-unknown
           override: true
+
       - name: Install wasm-pack
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
       - name: Build with wasm-pack
-        run: wasm-pack build --release --target bundler -- --features wasm
+        run: wasm-pack build --release --target bundler --scope vaultic -- --features wasm
+
       - name: Publish to npm
         run: |
           cd pkg
