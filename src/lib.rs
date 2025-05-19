@@ -571,186 +571,21 @@ pub fn unprotect_keypair(
 }
 
 #[cfg(feature = "wasm")]
-#[wasm_bindgen]
-/// Decrypts a previously protected RSA keypair using the provided passphrase.
-/// Returns a JavaScript object containing the decrypted PEM-formatted keys.
-pub fn unprotect_keypair(
-    encrypted_private: &str,
-    encrypted_public: &str,
-    passphrase: &str,
-    salt: &str,
-    nonce: &str,
-) -> Result<JsValue, JsValue> {
-    // Create input structure
-    let input = EncryptedKeypairInput {
-        encrypted_private: encrypted_private.to_string(),
-        encrypted_public: encrypted_public.to_string(),
-        salt: salt.to_string(),
-        nonce: nonce.to_string(),
-    };
-
-    // Call the implementation
-    match unprotect_keypair_impl(&input, passphrase) {
-        Ok(keypair) => Ok(serde_wasm_bindgen::to_value(&keypair).unwrap()),
-        Err(e) => {
-            // Log error to console
-            web_sys::console::error_1(&format!("Vaultic keypair unprotection error: {}", e).into());
-            Err(JsValue::from_str(&e))
-        }
-    }
-}
-
-/// Internal implementation of keypair unprotection
-fn unprotect_keypair_impl(
-    input: &EncryptedKeypairInput,
-    passphrase: &str,
-) -> Result<KeyPair, String> {
-    // Decode Base64 values
-    let salt = general_purpose::STANDARD
-        .decode(&input.salt)
-        .map_err(|e| format!("Failed to decode salt: {}", e))?;
-
-    let nonce = general_purpose::STANDARD
-        .decode(&input.nonce)
-        .map_err(|e| format!("Failed to decode nonce: {}", e))?;
-
-    let encrypted_private = general_purpose::STANDARD
-        .decode(&input.encrypted_private)
-        .map_err(|e| format!("Failed to decode encrypted private key: {}", e))?;
-
-    let encrypted_public = general_purpose::STANDARD
-        .decode(&input.encrypted_public)
-        .map_err(|e| format!("Failed to decode encrypted public key: {}", e))?;
-
-    // Verify input lengths
-    if salt.len() != 16 {
-        return Err("Invalid salt length".to_string());
-    }
-    if nonce.len() != 12 {
-        return Err("Invalid nonce length".to_string());
-    }
-
-    // Derive AES key using PBKDF2
-    let mut key = [0u8; 32];
-    const PBKDF2_ROUNDS: u32 = 100_000;
-
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt, PBKDF2_ROUNDS, &mut key)
-        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
-
-    // Initialize AES-GCM cipher
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Failed to create AES cipher: {}", e))?;
-
-    // Create nonce
-    let nonce = Nonce::from_slice(&nonce);
-
-    // Decrypt private key
-    let private_pem_bytes = cipher
-        .decrypt(
-            nonce,
-            Payload {
-                msg: &encrypted_private,
-                aad: &[],
-            },
-        )
-        .map_err(|e| format!("Private key decryption failed: {}", e))?;
-
-    // Decrypt public key
-    let public_pem_bytes = cipher
-        .decrypt(
-            nonce,
-            Payload {
-                msg: &encrypted_public,
-                aad: &[],
-            },
-        )
-        .map_err(|e| format!("Public key decryption failed: {}", e))?;
-
-    // Convert bytes to strings
-    let private_pem = String::from_utf8(private_pem_bytes)
-        .map_err(|e| format!("Invalid UTF-8 in decrypted private key: {}", e))?;
-
-    let public_pem = String::from_utf8(public_pem_bytes)
-        .map_err(|e| format!("Invalid UTF-8 in decrypted public key: {}", e))?;
-
-    // Validate the decrypted keys
-    let private_key = RsaPrivateKey::from_pkcs8_pem(&private_pem)
-        .map_err(|e| format!("Invalid decrypted private key: {}", e))?;
-
-    let public_key = RsaPublicKey::from_public_key_pem(&public_pem)
-        .map_err(|e| format!("Invalid decrypted public key: {}", e))?;
-
-    // Verify that the public key matches the private key
-    let derived_public = RsaPublicKey::from(&private_key);
-    if derived_public != public_key {
-        return Err("Decrypted public key does not match private key".to_string());
-    }
-
-    Ok(KeyPair {
-        private_pem,
-        public_pem,
-    })
-}
-
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-/// Encrypts a message with AES-256-GCM using a passphrase
+#[wasm_bindgen(js_name = unprotectMessageObj)]
+/// Decrypts a message previously encrypted with protect_message
 ///
-/// Generates a random salt and nonce, derives an AES-256 key using PBKDF2,
-/// and returns the encrypted text with metadata needed for decryption.
-pub fn protect_message(plaintext: &str, passphrase: &str) -> JsValue {
-    let result = protect_message_impl(plaintext, passphrase);
-    serde_wasm_bindgen::to_value(&result).unwrap()
-}
+/// Takes the encrypted message parameters as a JavaScript object and passphrase,
+/// and returns the original plaintext if successful.
+pub fn unprotect_message_obj(
+    encrypted_message: &JsValue,
+    passphrase: &str,
+) -> Result<String, JsValue> {
+    let protected: ProtectedMessage = serde_wasm_bindgen::from_value(encrypted_message.clone())
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse encrypted message: {}", e)))?;
 
-#[cfg(not(feature = "wasm"))]
-/// Encrypts a message with AES-256-GCM using a passphrase
-///
-/// Generates a random salt and nonce, derives an AES-256 key using PBKDF2,
-/// and returns the encrypted text with metadata needed for decryption.
-pub fn protect_message(plaintext: &str, passphrase: &str) -> ProtectedMessage {
-    protect_message_impl(plaintext, passphrase)
-}
-
-/// Internal implementation of message protection
-fn protect_message_impl(plaintext: &str, passphrase: &str) -> ProtectedMessage {
-    // Generate random salt (16 bytes)
-    let mut salt_bytes = [0u8; 16];
-    OsRng.fill_bytes(&mut salt_bytes);
-
-    // Generate random nonce (12 bytes)
-    let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
-
-    // Derive AES-256 key using PBKDF2
-    const PBKDF2_ROUNDS: u32 = 100_000;
-    let mut key = [0u8; 32]; // 256 bits
-
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt_bytes, PBKDF2_ROUNDS, &mut key)
-        .expect("PBKDF2 key derivation failed");
-
-    // Initialize AES-GCM cipher
-    let cipher = Aes256Gcm::new_from_slice(&key).expect("Failed to initialize AES cipher");
-
-    // Prepare nonce
-    let nonce = Nonce::from_slice(&nonce_bytes);
-
-    // Encrypt the text
-    let ciphertext = cipher
-        .encrypt(
-            nonce,
-            Payload {
-                msg: plaintext.as_bytes(),
-                aad: &[],
-            },
-        )
-        .expect("Encryption failed");
-
-    // Encode in Base64
-    ProtectedMessage {
-        ciphertext: general_purpose::STANDARD.encode(ciphertext),
-        salt: general_purpose::STANDARD.encode(salt_bytes),
-        nonce: general_purpose::STANDARD.encode(nonce_bytes),
+    match unprotect_message_impl(&protected, passphrase) {
+        Ok(plaintext) => Ok(plaintext),
+        Err(e) => Err(JsValue::from_str(&e)),
     }
 }
 
@@ -758,12 +593,27 @@ fn protect_message_impl(plaintext: &str, passphrase: &str) -> ProtectedMessage {
 #[wasm_bindgen]
 /// Decrypts a message previously encrypted with protect_message
 ///
-/// Takes the encrypted message parameters and passphrase,
-/// and returns the original plaintext if successful.
-pub fn unprotect_message(encrypted_message: &JsValue, passphrase: &str) -> Result<String, JsValue> {
-    let protected: ProtectedMessage = serde_wasm_bindgen::from_value(encrypted_message.clone())
-        .map_err(|e| JsValue::from_str(&format!("Failed to parse encrypted message: {}", e)))?;
+/// Takes individual encryption parameters:
+/// - encrypted_data: Base64-encoded ciphertext
+/// - passphrase: The passphrase used for encryption
+/// - salt: Base64-encoded salt used for key derivation
+/// - nonce: Base64-encoded nonce used for AES-GCM encryption
+///
+/// Returns the original plaintext if successful or an error.
+pub fn unprotect_message(
+    encrypted_data: &str,
+    passphrase: &str,
+    salt: &str,
+    nonce: &str,
+) -> Result<String, JsValue> {
+    // Create a ProtectedMessage structure from the individual parameters
+    let protected = ProtectedMessage {
+        ciphertext: encrypted_data.to_string(),
+        salt: salt.to_string(),
+        nonce: nonce.to_string(),
+    };
 
+    // Reuse the existing implementation
     match unprotect_message_impl(&protected, passphrase) {
         Ok(plaintext) => Ok(plaintext),
         Err(e) => Err(JsValue::from_str(&e)),
@@ -835,4 +685,66 @@ fn unprotect_message_impl(
 
     // Convert to string
     String::from_utf8(plaintext).map_err(|e| format!("Invalid UTF-8 in decrypted text: {}", e))
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+/// Encrypts a message with AES-256-GCM using a passphrase
+///
+/// Generates a random salt and nonce, derives an AES-256 key using PBKDF2,
+/// and returns the encrypted text with metadata needed for decryption.
+pub fn protect_message(plaintext: &str, passphrase: &str) -> JsValue {
+    let result = protect_message_impl(plaintext, passphrase);
+    serde_wasm_bindgen::to_value(&result).unwrap()
+}
+
+#[cfg(not(feature = "wasm"))]
+/// Encrypts a message with AES-256-GCM using a passphrase
+///
+/// Generates a random salt and nonce, derives an AES-256 key using PBKDF2,
+/// and returns the encrypted text with metadata needed for decryption.
+pub fn protect_message(plaintext: &str, passphrase: &str) -> ProtectedMessage {
+    protect_message_impl(plaintext, passphrase)
+}
+
+/// Internal implementation of message protection
+fn protect_message_impl(plaintext: &str, passphrase: &str) -> ProtectedMessage {
+    // Generate random salt (16 bytes)
+    let mut salt_bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut salt_bytes);
+
+    // Generate random nonce (12 bytes)
+    let mut nonce_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_bytes);
+
+    // Derive AES-256 key using PBKDF2
+    const PBKDF2_ROUNDS: u32 = 100_000;
+    let mut key = [0u8; 32]; // 256 bits
+
+    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt_bytes, PBKDF2_ROUNDS, &mut key)
+        .expect("PBKDF2 key derivation failed");
+
+    // Initialize AES-GCM cipher
+    let cipher = Aes256Gcm::new_from_slice(&key).expect("Failed to initialize AES cipher");
+
+    // Prepare nonce
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    // Encrypt the text
+    let ciphertext = cipher
+        .encrypt(
+            nonce,
+            Payload {
+                msg: plaintext.as_bytes(),
+                aad: &[],
+            },
+        )
+        .expect("Encryption failed");
+
+    // Encode in Base64
+    ProtectedMessage {
+        ciphertext: general_purpose::STANDARD.encode(ciphertext),
+        salt: general_purpose::STANDARD.encode(salt_bytes),
+        nonce: general_purpose::STANDARD.encode(nonce_bytes),
+    }
 }
