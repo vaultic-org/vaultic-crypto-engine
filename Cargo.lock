@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "vaultic-crypto-engine"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "aes-gcm",
  "base64",

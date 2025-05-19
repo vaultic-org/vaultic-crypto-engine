@@ -1,5 +1,4 @@
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::*;
 
 #[cfg(feature = "wasm")]
 /// Get current timestamp suitable for use as a random seed
@@ -20,4 +19,4 @@ pub fn get_now_seed() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos() as u64
-} 
+}

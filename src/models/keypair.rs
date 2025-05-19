@@ -35,4 +35,4 @@ pub struct EncryptedKeypairInput {
     pub salt: String,
     /// Base64-encoded nonce used for encryption
     pub nonce: String,
-} 
+}

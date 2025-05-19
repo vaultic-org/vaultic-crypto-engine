@@ -1,8 +1,6 @@
 use crate::models::ProtectedMessage;
 use crate::utils::{
-    encode_base64, decode_base64, 
-    generate_nonce, generate_salt,
-    derive_aes_key, create_aes_cipher
+    create_aes_cipher, decode_base64, derive_aes_key, encode_base64, generate_nonce, generate_salt,
 };
 use aes_gcm::{
     Nonce,
@@ -150,7 +148,7 @@ pub fn unprotect_message_impl(
 
     // Derive AES key using utility function
     let key = derive_aes_key(passphrase, &salt)?;
-    
+
     // Initialize AES-GCM cipher using utility function
     let cipher = create_aes_cipher(&key)?;
 

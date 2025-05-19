@@ -11,4 +11,4 @@ pub struct HybridEncryptedData {
     pub encrypted_key: String,
     /// AES-encrypted data
     pub encrypted_data: Vec<u8>,
-} 
+}

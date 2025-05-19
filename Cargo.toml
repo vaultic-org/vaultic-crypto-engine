@@ -1,6 +1,6 @@
 [package]
 name = "vaultic-crypto-engine"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 description = "A cryptographic engine for secure RSA operations in Rust and WebAssembly"
 repository = "https://github.com/vaultic-org/vaultic-crypto-engine"
