@@ -2,8 +2,6 @@
 mod key_unprotection_tests {
     use base64::Engine;
     use base64::engine::general_purpose;
-    use rsa::{RsaPrivateKey, RsaPublicKey};
-    use std::time::{Duration, Instant};
     use vaultic_crypto_engine::*;
 
     /// Helper function to generate a test keypair and protect it
@@ -12,22 +10,6 @@ mod key_unprotection_tests {
         let protected = protect_keypair_impl(&keypair.private_pem, &keypair.public_pem, passphrase)
             .expect("Failed to protect keypair");
         (keypair, protected)
-    }
-
-    /// Helper function to create an EncryptedKeypairResult from individual components
-    fn create_encrypted_result(
-        encrypted_private: &str,
-        encrypted_public: &str,
-        salt: &str,
-        nonce: &str,
-    ) -> EncryptedKeypairResult {
-        EncryptedKeypairResult {
-            encrypted_private: encrypted_private.to_string(),
-            encrypted_public: encrypted_public.to_string(),
-            salt: salt.to_string(),
-            nonce_private: nonce.to_string(),
-            nonce_public: nonce.to_string(),
-        }
     }
 
     #[test]

@@ -1,9 +1,8 @@
 #[cfg(test)]
 mod raw_message_unprotection_tests {
-    use base64::Engine;
-    use base64::engine::general_purpose;
     use vaultic_crypto_engine::*;
 
+    #[cfg(feature = "wasm")]
     // Test helper function to encrypt a message and get its raw components
     fn encrypt_message_get_raw(plaintext: &str, passphrase: &str) -> (String, String, String) {
         // Encrypt the message using the standard function
