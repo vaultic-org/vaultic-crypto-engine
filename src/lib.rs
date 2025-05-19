@@ -16,11 +16,12 @@
 //! 2. Stronger blinding factors are applied
 //! 3. Use is recommended in non-networked or low-risk environments only
 
-#[cfg(target_arch = "wasm32")]
+// WebAssembly support is conditional based on the "wasm" feature
+#[cfg(feature = "wasm")]
 use js_sys;
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 use web_sys;
 
 use base64::{Engine as _, engine::general_purpose};
@@ -35,18 +36,21 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
     aead::{Aead, KeyInit, Payload},
 };
+use hmac::Hmac;
+use pbkdf2::pbkdf2;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::convert::TryInto;
 
 // Serde is used for serializing structs to JS (via serde_wasm_bindgen)
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 use serde_wasm_bindgen;
 
 // Maximum size for direct RSA encryption
 // For RSA 2048-bit, the maximum is 2048/8 - padding = 256 - 11 = 245 bytes
 pub const MAX_RSA_SIZE: usize = 245;
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 /// Initializes panic hook to forward Rust panics to the JavaScript console.
 /// This is automatically invoked when the WASM module is loaded.
 #[wasm_bindgen(start)]
@@ -76,7 +80,22 @@ pub struct HybridEncryptedData {
     pub encrypted_data: Vec<u8>,
 }
 
-#[cfg(target_arch = "wasm32")]
+/// Structure for the encrypted keypair result
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct EncryptedKeypairResult {
+    /// Base64-encoded encrypted private key
+    pub encrypted_private: String,
+    /// Base64-encoded encrypted public key
+    pub encrypted_public: String,
+    /// Base64-encoded salt used for key derivation
+    pub salt: String,
+    /// Base64-encoded nonce used for private key encryption
+    pub nonce_private: String,
+    /// Base64-encoded nonce used for public key encryption
+    pub nonce_public: String,
+}
+
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
 /// Generates a 2048-bit RSA key pair and returns it as a JavaScript object.
 pub fn generate_rsa_keypair_pem() -> JsValue {
@@ -84,7 +103,7 @@ pub fn generate_rsa_keypair_pem() -> JsValue {
     serde_wasm_bindgen::to_value(&keypair).unwrap()
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(feature = "wasm"))]
 /// Generates a 2048-bit RSA key pair and returns it as a Rust struct.
 pub fn generate_rsa_keypair_pem() -> KeyPair {
     generate_keypair_impl()
@@ -115,7 +134,7 @@ pub fn generate_keypair_impl() -> KeyPair {
     }
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
 /// Encrypts plaintext using the given public key and returns a Base64-encoded string.
 /// Automatically switches between direct RSA and hybrid RSA+AES based on data size.
@@ -123,7 +142,7 @@ pub fn rsa_encrypt_base64(public_key_pem: &str, plaintext: &str) -> String {
     rsa_encrypt_base64_impl(public_key_pem, plaintext)
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(feature = "wasm"))]
 /// Native version of RSA encryption for CLI or server use.
 /// Automatically switches between direct RSA and hybrid RSA+AES based on data size.
 pub fn rsa_encrypt_base64(public_key_pem: &str, plaintext: &str) -> String {
@@ -207,7 +226,7 @@ fn hybrid_rsa_aes_encrypt_base64(public_key_pem: &str, plaintext: &[u8]) -> Stri
     general_purpose::STANDARD.encode(json)
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 #[wasm_bindgen(catch)]
 /// Decrypts Base64-encoded ciphertext using the provided private key (PEM).
 /// Automatically detects and handles both direct RSA and hybrid RSA+AES encryption.
@@ -223,7 +242,7 @@ pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> Result
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(feature = "wasm"))]
 /// Native version of RSA decryption; panics on failure.
 /// Automatically detects and handles both direct RSA and hybrid RSA+AES encryption.
 pub fn rsa_decrypt_base64(private_key_pem: &str, ciphertext_b64: &str) -> String {
@@ -329,19 +348,216 @@ fn hybrid_rsa_aes_decrypt(
     String::from_utf8(decrypted_data).map_err(|e| format!("UTF-8 decode failed: {}", e))
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(feature = "wasm")]
 fn get_now_seed() -> u64 {
     // Use JavaScript Date.now() via wasm-bindgen
     js_sys::Date::now() as u64
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(feature = "wasm"))]
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(feature = "wasm"))]
 fn get_now_seed() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos() as u64
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+/// Protects a RSA keypair with a passphrase using PBKDF2 and AES-GCM.
+/// Returns a JavaScript object containing the encrypted keys and necessary metadata.
+pub fn protect_keypair(private_pem: &str, public_pem: &str, passphrase: &str) -> JsValue {
+    let result = protect_keypair_impl(private_pem, public_pem, passphrase)
+        .expect("Failed to protect keypair");
+    serde_wasm_bindgen::to_value(&result).unwrap()
+}
+
+#[cfg(not(feature = "wasm"))]
+/// Native version of keypair protection.
+/// Returns a struct containing the encrypted keys and necessary metadata.
+pub fn protect_keypair(
+    private_pem: &str,
+    public_pem: &str,
+    passphrase: &str,
+) -> EncryptedKeypairResult {
+    protect_keypair_impl(private_pem, public_pem, passphrase).expect("Failed to protect keypair")
+}
+
+/// Internal implementation of keypair protection
+pub fn protect_keypair_impl(
+    private_pem: &str,
+    public_pem: &str,
+    passphrase: &str,
+) -> Result<EncryptedKeypairResult, String> {
+    // Validate inputs by parsing the keys
+    let private_key = RsaPrivateKey::from_pkcs8_pem(private_pem)
+        .map_err(|e| format!("Invalid private key PEM: {}", e))?;
+    let public_key = RsaPublicKey::from_public_key_pem(public_pem)
+        .map_err(|e| format!("Invalid public key PEM: {}", e))?;
+
+    // Verify that the public key matches the private key
+    let derived_public = RsaPublicKey::from(&private_key);
+    if derived_public != public_key {
+        return Err("Public key does not match private key".to_string());
+    }
+
+    // Generate a random salt
+    let mut salt_bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut salt_bytes);
+
+    // Derive AES key using PBKDF2
+    let mut key = [0u8; 32]; // 256 bits for AES-256
+    const PBKDF2_ROUNDS: u32 = 100_000;
+
+    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt_bytes, PBKDF2_ROUNDS, &mut key)
+        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+
+    // Initialize AES-GCM cipher
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|e| format!("Failed to create AES cipher: {}", e))?;
+
+    // Generate nonces for both keys
+    let mut nonce_private_bytes = [0u8; 12];
+    let mut nonce_public_bytes = [0u8; 12];
+    OsRng.fill_bytes(&mut nonce_private_bytes);
+    OsRng.fill_bytes(&mut nonce_public_bytes);
+
+    let nonce_private = Nonce::from_slice(&nonce_private_bytes);
+    let nonce_public = Nonce::from_slice(&nonce_public_bytes);
+
+    // Encrypt private key
+    let encrypted_private = cipher
+        .encrypt(
+            nonce_private,
+            Payload {
+                msg: private_pem.as_bytes(),
+                aad: &[],
+            },
+        )
+        .map_err(|e| format!("Private key encryption failed: {}", e))?;
+
+    // Encrypt public key
+    let encrypted_public = cipher
+        .encrypt(
+            nonce_public,
+            Payload {
+                msg: public_pem.as_bytes(),
+                aad: &[],
+            },
+        )
+        .map_err(|e| format!("Public key encryption failed: {}", e))?;
+
+    // Create and return the result
+    Ok(EncryptedKeypairResult {
+        encrypted_private: general_purpose::STANDARD.encode(encrypted_private),
+        encrypted_public: general_purpose::STANDARD.encode(encrypted_public),
+        salt: general_purpose::STANDARD.encode(salt_bytes),
+        nonce_private: general_purpose::STANDARD.encode(nonce_private_bytes),
+        nonce_public: general_purpose::STANDARD.encode(nonce_public_bytes),
+    })
+}
+
+/// Unprotects (decrypts) a previously protected keypair.
+/// This function is the inverse of `protect_keypair`.
+pub fn unprotect_keypair(
+    encrypted_result: &EncryptedKeypairResult,
+    passphrase: &str,
+) -> Result<KeyPair, String> {
+    // Decode Base64 values
+    let salt = general_purpose::STANDARD
+        .decode(&encrypted_result.salt)
+        .map_err(|e| format!("Failed to decode salt: {}", e))?;
+
+    let nonce_private = general_purpose::STANDARD
+        .decode(&encrypted_result.nonce_private)
+        .map_err(|e| format!("Failed to decode private key nonce: {}", e))?;
+
+    let nonce_public = general_purpose::STANDARD
+        .decode(&encrypted_result.nonce_public)
+        .map_err(|e| format!("Failed to decode public key nonce: {}", e))?;
+
+    let encrypted_private = general_purpose::STANDARD
+        .decode(&encrypted_result.encrypted_private)
+        .map_err(|e| format!("Failed to decode encrypted private key: {}", e))?;
+
+    let encrypted_public = general_purpose::STANDARD
+        .decode(&encrypted_result.encrypted_public)
+        .map_err(|e| format!("Failed to decode encrypted public key: {}", e))?;
+
+    // Derive AES key using PBKDF2
+    let mut key = [0u8; 32];
+    const PBKDF2_ROUNDS: u32 = 100_000;
+
+    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt, PBKDF2_ROUNDS, &mut key)
+        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+
+    // Initialize AES-GCM cipher
+    let cipher = Aes256Gcm::new_from_slice(&key)
+        .map_err(|e| format!("Failed to create AES cipher: {}", e))?;
+
+    // Decrypt private key
+    let private_pem_bytes = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce_private),
+            Payload {
+                msg: &encrypted_private,
+                aad: &[],
+            },
+        )
+        .map_err(|e| format!("Private key decryption failed: {}", e))?;
+
+    // Decrypt public key
+    let public_pem_bytes = cipher
+        .decrypt(
+            Nonce::from_slice(&nonce_public),
+            Payload {
+                msg: &encrypted_public,
+                aad: &[],
+            },
+        )
+        .map_err(|e| format!("Public key decryption failed: {}", e))?;
+
+    // Convert bytes to strings
+    let private_pem = String::from_utf8(private_pem_bytes)
+        .map_err(|e| format!("Invalid UTF-8 in decrypted private key: {}", e))?;
+
+    let public_pem = String::from_utf8(public_pem_bytes)
+        .map_err(|e| format!("Invalid UTF-8 in decrypted public key: {}", e))?;
+
+    // Validate the decrypted keys
+    let _private_key = RsaPrivateKey::from_pkcs8_pem(&private_pem)
+        .map_err(|e| format!("Invalid decrypted private key: {}", e))?;
+
+    let _public_key = RsaPublicKey::from_public_key_pem(&public_pem)
+        .map_err(|e| format!("Invalid decrypted public key: {}", e))?;
+
+    Ok(KeyPair {
+        private_pem,
+        public_pem,
+    })
+}
+
+#[cfg(feature = "wasm")]
+#[wasm_bindgen]
+/// WebAssembly binding for unprotecting a keypair.
+pub fn unprotect_keypair_wasm(
+    encrypted_data: JsValue,
+    passphrase: &str,
+) -> Result<JsValue, JsValue> {
+    // Parse the input
+    let encrypted_result: EncryptedKeypairResult =
+        serde_wasm_bindgen::from_value(encrypted_data)
+            .map_err(|e| JsValue::from_str(&format!("Failed to parse encrypted data: {}", e)))?;
+
+    // Unprotect the keypair
+    match unprotect_keypair(&encrypted_result, passphrase) {
+        Ok(keypair) => Ok(serde_wasm_bindgen::to_value(&keypair).unwrap()),
+        Err(e) => {
+            web_sys::console::error_1(&format!("Vaultic keypair unprotection error: {}", e).into());
+            Err(JsValue::from_str(&e))
+        }
+    }
 }

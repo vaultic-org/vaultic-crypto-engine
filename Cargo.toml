@@ -29,6 +29,9 @@ console_error_panic_hook = "0.1"
 web-sys = { version = "0.3", features = ["console"] }
 js-sys = "0.3"
 aes-gcm = "0.10.3"
+hmac = "0.12"
+pbkdf2 = "0.12"
+sha2 = "0.10"
 
 [dev-dependencies]
 criterion = "0.5"

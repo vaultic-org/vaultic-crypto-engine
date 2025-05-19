@@ -378,7 +378,7 @@ mod security_test_suite {
 #[cfg(test)]
 mod performance_test_suite {
     use super::*;
-    use std::time::{Instant};
+    use std::time::Instant;
 
     /// Run a simple benchmark of a given function
     fn benchmark<F, T>(name: &str, iterations: u32, f: F) -> T
@@ -529,18 +529,23 @@ mod interoperability_test_suite {
         // In the modern implementation of PKCS#1 v1.5, the first byte could be different
         // depending on library implementation. In RSA-2048, we're mainly concerned
         // that the ciphertext is the right length and can be decrypted correctly.
-        
+
         // Some libraries may represent the first byte as 0x00, others as 0x80 (128) due to
         // sign bit handling or other implementation details.
-        
+
         // Let's verify we can decrypt the ciphertext instead of checking specific byte values,
         // which might vary across RSA library implementations while still being standards-compliant.
         let decrypted = rsa_decrypt_base64_impl(&keypair.private_pem, &encrypted).unwrap();
-        assert_eq!(message, decrypted, "Decryption failed or produced incorrect result");
-        
+        assert_eq!(
+            message, decrypted,
+            "Decryption failed or produced incorrect result"
+        );
+
         // Log the actual byte values for documentation
-        println!("PKCS#1 v1.5 ciphertext first bytes: [{}, {}, {}]", 
-                 ciphertext[0], ciphertext[1], ciphertext[2]);
+        println!(
+            "PKCS#1 v1.5 ciphertext first bytes: [{}, {}, {}]",
+            ciphertext[0], ciphertext[1], ciphertext[2]
+        );
     }
 
     #[test]
