@@ -1,6 +1,10 @@
+use std::fs;
+// use vaultic_crypto_engine::unprotect_message_obj;
+use serde_json::Value;
+use vaultic_crypto_engine::ProtectedMessage;
+
 #[cfg(test)]
 mod raw_message_unprotection_tests {
-    use vaultic_crypto_engine::*;
 
     #[cfg(feature = "wasm")]
     // Test helper function to encrypt a message and get its raw components
