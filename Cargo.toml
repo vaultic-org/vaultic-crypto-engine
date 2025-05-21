@@ -1,13 +1,13 @@
 [package]
 name = "vaultic-crypto-engine"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
-description = "A cryptographic engine for secure RSA operations in Rust and WebAssembly"
+description = "A cryptographic engine for secure RSA and ECC operations in Rust and WebAssembly"
 repository = "https://github.com/vaultic-org/vaultic-crypto-engine"
 license = "MIT"
 readme = "README.md"
 categories = ["cryptography", "wasm"]
-keywords = ["crypto", "rsa", "encryption", "wasm", "vaultic"]
+keywords = ["crypto", "rsa", "ecc", "ecdsa", "ecdh", "encryption", "wasm", "vaultic"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -32,6 +32,12 @@ aes-gcm = "0.10.3"
 hmac = "0.12"
 pbkdf2 = "0.12"
 sha2 = "0.10"
+# ECC dependencies
+p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pem"] }
+k256 = { version = "0.13", features = ["ecdsa", "ecdh", "pem"] }
+ecdsa = { version = "0.16", features = ["der", "pem"] }
+elliptic-curve = { version = "0.13", features = ["std"] }
+hkdf = "0.12"
 
 [dev-dependencies]
 criterion = "0.5"

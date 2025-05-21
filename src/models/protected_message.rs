@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// Structure for storing protected message
 #[derive(Serialize, Deserialize)]

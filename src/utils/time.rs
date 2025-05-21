@@ -1,5 +1,4 @@
 #[cfg(feature = "wasm")]
-
 #[cfg(feature = "wasm")]
 /// Get current timestamp suitable for use as a random seed
 /// Uses JavaScript Date.now() in WebAssembly environments

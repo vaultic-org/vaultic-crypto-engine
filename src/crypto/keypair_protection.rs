@@ -1,3 +1,4 @@
+use crate::crypto::kdf::PBKDF2_DEFAULT_ITERATIONS;
 use crate::models::{EncryptedKeypairInput, EncryptedKeypairResult, KeyPair};
 use aes_gcm::{
     Aes256Gcm, Nonce,
@@ -65,10 +66,14 @@ pub fn protect_keypair_impl(
 
     // Derive AES key using PBKDF2
     let mut key = [0u8; 32]; // 256 bits for AES-256
-    const PBKDF2_ROUNDS: u32 = 100_000;
 
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt_bytes, PBKDF2_ROUNDS, &mut key)
-        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+    pbkdf2::<Hmac<Sha256>>(
+        passphrase.as_bytes(),
+        &salt_bytes,
+        PBKDF2_DEFAULT_ITERATIONS,
+        &mut key,
+    )
+    .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
 
     // Initialize AES-GCM cipher
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -162,10 +167,14 @@ fn unprotect_keypair_internal(
 
     // Derive AES key using PBKDF2
     let mut key = [0u8; 32];
-    const PBKDF2_ROUNDS: u32 = 100_000;
 
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt, PBKDF2_ROUNDS, &mut key)
-        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+    pbkdf2::<Hmac<Sha256>>(
+        passphrase.as_bytes(),
+        &salt,
+        PBKDF2_DEFAULT_ITERATIONS,
+        &mut key,
+    )
+    .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
 
     // Initialize AES-GCM cipher
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -281,10 +290,14 @@ pub fn unprotect_keypair_impl(
 
     // Derive AES key using PBKDF2
     let mut key = [0u8; 32];
-    const PBKDF2_ROUNDS: u32 = 100_000;
 
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt, PBKDF2_ROUNDS, &mut key)
-        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+    pbkdf2::<Hmac<Sha256>>(
+        passphrase.as_bytes(),
+        &salt,
+        PBKDF2_DEFAULT_ITERATIONS,
+        &mut key,
+    )
+    .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
 
     // Initialize AES-GCM cipher
     let cipher = Aes256Gcm::new_from_slice(&key)
@@ -371,10 +384,14 @@ pub fn unprotect_keypair(
 
     // Derive AES key using PBKDF2
     let mut key = [0u8; 32];
-    const PBKDF2_ROUNDS: u32 = 100_000;
 
-    pbkdf2::<Hmac<Sha256>>(passphrase.as_bytes(), &salt, PBKDF2_ROUNDS, &mut key)
-        .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
+    pbkdf2::<Hmac<Sha256>>(
+        passphrase.as_bytes(),
+        &salt,
+        PBKDF2_DEFAULT_ITERATIONS,
+        &mut key,
+    )
+    .map_err(|e| format!("PBKDF2 key derivation failed: {}", e))?;
 
     // Initialize AES-GCM cipher
     let cipher = Aes256Gcm::new_from_slice(&key)

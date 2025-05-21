@@ -9,3 +9,7 @@ pub use encrypted_data::HybridEncryptedData;
 // Protected message models
 mod protected_message;
 pub use protected_message::ProtectedMessage;
+
+// ECC models
+mod ecc;
+pub use ecc::{EccCurve, EccKeyPair, EccSignature, SharedSecret};
